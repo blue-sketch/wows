@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PARTICIPANT
+  ADMIN
+}
+
+enum RoundStatus {
+  PENDING
+  ACTIVE
+  ENDED
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum AdminEventType {
+  ROUND_STARTED
+  ROUND_ENDED
+  NEWS_BROADCAST
+  SHOCK
+  BROADCAST
+  HALT
+  RESUME
+  LEADERBOARD_REVEALED
+  LEADERBOARD_HIDDEN
+  USERS_IMPORTED
+  TRADE_REVERSED
+  PASSWORD_RESET
+  MANUAL_CORRECTION
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  username     String       @unique @db.VarChar(50)
+  passwordHash String       @map("password_hash") @db.VarChar(255)
+  displayName  String       @map("display_name") @db.VarChar(100)
+  role         UserRole     @default(PARTICIPANT)
+  cashBalance  Decimal      @default(500000) @map("cash_balance") @db.Decimal(14, 2)
+  isActive     Boolean      @default(true) @map("is_active")
+  holdings     Holding[]
+  trades       Trade[]
+  adminEvents  AdminEvent[] @relation("AdminActor")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+}
+
+model Stock {
+  id              Int       @id @default(autoincrement())
+  ticker          String    @unique @db.VarChar(8)
+  companyName     String    @map("company_name") @db.VarChar(100)
+  sector          String    @db.VarChar(50)
+  currentPrice    Decimal   @map("current_price") @db.Decimal(12, 2)
+  basePrice       Decimal   @map("base_price") @db.Decimal(12, 2)
+  availableSupply Int       @map("available_supply")
+  volatilityPct   Decimal   @default(5) @map("volatility_pct") @db.Decimal(5, 2)
+  isTradeable     Boolean   @default(false) @map("is_tradeable")
+  holdings        Holding[]
+  trades          Trade[]
+  newsEvents      NewsEvent[]
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+}
+
+model Holding {
+  userId      Int      @map("user_id")
+  stockId     Int      @map("stock_id")
+  quantity    Int      @default(0)
+  avgBuyPrice Decimal? @map("avg_buy_price") @db.Decimal(12, 2)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock       Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@id([userId, stockId])
+}
+
+model Trade {
+  id         Int       @id @default(autoincrement())
+  requestId  String    @unique @map("request_id") @db.VarChar(64)
+  userId     Int       @map("user_id")
+  stockId     Int      @map("stock_id")
+  side       TradeSide
+  quantity   Int
+  price      Decimal   @db.Decimal(12, 2)
+  fee        Decimal   @default(0) @db.Decimal(10, 2)
+  executedAt DateTime  @default(now()) @map("executed_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock      Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+}
+
+model Round {
+  id         Int         @id @default(autoincrement())
+  number     Int
+  name       String      @db.VarChar(100)
+  status     RoundStatus @default(PENDING)
+  startedAt  DateTime?   @map("started_at")
+  endedAt    DateTime?   @map("ended_at")
+  newsEvents NewsEvent[]
+  market     MarketState?
+}
+
+model NewsEvent {
+  id          Int      @id @default(autoincrement())
+  roundId     Int?     @map("round_id")
+  stockId     Int?     @map("stock_id")
+  headline    String   @db.VarChar(255)
+  detail      String?
+  payload     Json?
+  triggeredAt DateTime @default(now()) @map("triggered_at")
+  round       Round?   @relation(fields: [roundId], references: [id])
+  stock       Stock?   @relation(fields: [stockId], references: [id])
+}
+
+model MarketState {
+  id                 Int         @id @default(1)
+  currentRoundId     Int?        @unique @map("current_round_id")
+  roundStatus        RoundStatus @default(PENDING) @map("round_status")
+  tradingHalted      Boolean     @default(false) @map("trading_halted")
+  leaderboardVisible Boolean     @default(false) @map("leaderboard_visible")
+  lastTickAt         DateTime?   @map("last_tick_at")
+  eventVersion       Int         @default(1) @map("event_version")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+  currentRound       Round?      @relation(fields: [currentRoundId], references: [id])
+}
+
+model AdminEvent {
+  id        Int            @id @default(autoincrement())
+  type      AdminEventType
+  payload   Json
+  actorId   Int?           @map("actor_id")
+  createdAt DateTime       @default(now()) @map("created_at")
+  actor     User?          @relation("AdminActor", fields: [actorId], references: [id])
+}

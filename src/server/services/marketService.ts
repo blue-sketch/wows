@@ -4,25 +4,14 @@ import { Decimal } from 'decimal.js';
 import { parseUserCsv } from '../lib/csv.js';
 import { HttpError } from '../lib/errors.js';
 import { toInputJson } from '../lib/json.js';
-import { clamp, decimalOf, moneyNumber, percentage, roundMoney } from '../lib/money.js';
+import { decimalOf, moneyNumber } from '../lib/money.js';
 import type { MarketRuntime } from './marketRuntime.js';
+import { calculateNextTickPrice, clampStockPrice } from './pricingEngine.js';
 
 interface NewsImpactInput {
   ticker: string;
   magnitudePct: number;
 }
-
-const PRICE_FLOOR_MULTIPLIER = new Decimal(0.2);
-const PRICE_CEILING_MULTIPLIER = new Decimal(6);
-
-const clampStockPrice = (
-  basePrice: Decimal.Value,
-  nextPrice: Decimal.Value,
-): Decimal => {
-  const floor = decimalOf(basePrice).mul(PRICE_FLOOR_MULTIPLIER);
-  const ceiling = decimalOf(basePrice).mul(PRICE_CEILING_MULTIPLIER);
-  return roundMoney(clamp(nextPrice, floor, ceiling));
-};
 
 export class MarketService {
   constructor(
@@ -32,6 +21,8 @@ export class MarketService {
 
   async tick(): Promise<void> {
     await this.runtime.queueMarketMutation(async () => {
+      const tickedTickers: string[] = [];
+
       await this.prisma.$transaction(async (tx) => {
         const marketState = await tx.marketState.findUniqueOrThrow({ where: { id: 1 } });
         if (marketState.roundStatus !== RoundStatus.ACTIVE || marketState.tradingHalted) {
@@ -44,19 +35,25 @@ export class MarketService {
         });
 
         for (const stock of stocks) {
-          const currentPrice = decimalOf(stock.currentPrice.toString());
-          const basePrice = decimalOf(stock.basePrice.toString());
-          const volatilityBand = percentage(stock.volatilityPct.toString()).toNumber();
-          const noise = (Math.random() * 2 - 1) * volatilityBand;
-          const drift = currentPrice.sub(basePrice).div(basePrice).toNumber();
-          const pull = Math.abs(drift) > 0.6 ? -drift * 0.05 : 0;
-          const raw = currentPrice.mul(1 + noise + pull);
-          const nextPrice = clampStockPrice(basePrice, raw);
+          const baselineSupply = this.runtime.getBaselineSupply(stock.ticker, stock.availableSupply);
+          const tradeSignal = this.runtime.getTradeSignal(stock.ticker);
+          const randomShock = Math.random() + Math.random() - 1;
+          const nextPrice = calculateNextTickPrice({
+            currentPrice: stock.currentPrice.toString(),
+            basePrice: stock.basePrice.toString(),
+            volatilityPct: stock.volatilityPct.toString(),
+            availableSupply: stock.availableSupply,
+            baselineSupply,
+            tradeSignal,
+            randomShock,
+          });
 
           await tx.stock.update({
             where: { id: stock.id },
             data: { currentPrice: nextPrice.toFixed(2) },
           });
+
+          tickedTickers.push(stock.ticker);
         }
 
         await tx.marketState.update({
@@ -70,7 +67,11 @@ export class MarketService {
         maxWait: 10_000,
         timeout: 20_000,
       });
-    });
+
+      for (const ticker of tickedTickers) {
+        this.runtime.decayTradeSignal(ticker);
+      }
+    }, { forceLeaderboardRefresh: true });
   }
 
   async startRound(roundId: number, actorId: number): Promise<void> {
@@ -128,6 +129,8 @@ export class MarketService {
             },
           });
         });
+
+        this.runtime.resetTradeSignals();
       },
       { forceLeaderboardRefresh: true },
     );
@@ -181,6 +184,8 @@ export class MarketService {
             },
           });
         });
+
+        this.runtime.resetTradeSignals();
       },
       { forceLeaderboardRefresh: true },
     );

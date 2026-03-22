@@ -2,6 +2,7 @@ import {
   AdminEventType,
   PrismaClient,
   RoundStatus,
+  TradeSide,
   type MarketState,
   type NewsEvent,
 } from '@prisma/client';
@@ -19,6 +20,7 @@ import type {
 } from '../../shared/contracts.js';
 import { toInputJson } from '../lib/json.js';
 import { moneyNumber } from '../lib/money.js';
+import type { TradeSignal } from './pricingEngine.js';
 import { buildLeaderboard, buildPortfolio, toStockDto } from './valuation.js';
 
 interface RuntimeCache {
@@ -32,6 +34,16 @@ interface RuntimeCache {
 
 const NEWS_LIMIT = 20;
 const LEADERBOARD_CACHE_MS = 30_000;
+
+interface TradeActivityInput {
+  ticker: string;
+  side: TradeSide;
+  quantity: number;
+  availableSupplyAfterTrade: number;
+}
+
+const clampNumber = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
 
 export class MarketRuntime {
   private cache: RuntimeCache = {
@@ -52,6 +64,8 @@ export class MarketRuntime {
   };
 
   private mutationQueue: Promise<unknown> = Promise.resolve();
+  private baselineSupplyByTicker = new Map<string, number>();
+  private tradeSignals = new Map<string, TradeSignal>();
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -94,6 +108,13 @@ export class MarketRuntime {
         take: NEWS_LIMIT,
       }),
     ]);
+
+    for (const stock of stocks) {
+      const knownSupply = this.baselineSupplyByTicker.get(stock.ticker);
+      if (knownSupply === undefined || stock.availableSupply > knownSupply) {
+        this.baselineSupplyByTicker.set(stock.ticker, stock.availableSupply);
+      }
+    }
 
     this.cache.stocks = stocks.map(toStockDto);
     this.cache.prices = stocks.reduce<Record<string, number>>((accumulator, stock) => {
@@ -195,6 +216,18 @@ export class MarketRuntime {
     return queued;
   }
 
+  async queueStateRefresh(options?: { forceLeaderboardRefresh?: boolean }): Promise<void> {
+    const runTask = async (): Promise<void> => {
+      await this.refreshState();
+      await this.refreshLeaderboard(options?.forceLeaderboardRefresh ?? false);
+      this.broadcastState();
+    };
+
+    const queued = this.mutationQueue.then(runTask, runTask);
+    this.mutationQueue = queued.catch(() => undefined);
+    await queued;
+  }
+
   async recordAdminEvent(
     type: AdminEventType,
     actorId: number | null,
@@ -213,6 +246,82 @@ export class MarketRuntime {
     const portfolio = await buildPortfolio(this.prisma, userId, this.cache.prices);
     this.io.to(`user:${userId}`).emit('portfolio_update', portfolio);
     await this.refreshLeaderboardIfStale();
+  }
+
+  getBaselineSupply(ticker: string, fallbackSupply = 1): number {
+    return this.baselineSupplyByTicker.get(ticker) ?? Math.max(1, fallbackSupply);
+  }
+
+  getTradeSignal(ticker: string): TradeSignal {
+    const signal = this.tradeSignals.get(ticker);
+    if (!signal) {
+      return { orderImbalance: 0, tradeIntensity: 0 };
+    }
+    return { ...signal };
+  }
+
+  recordTradeActivity(input: TradeActivityInput): void {
+    const baselineSupply = this.getBaselineSupply(
+      input.ticker,
+      input.availableSupplyAfterTrade + input.quantity,
+    );
+    const normalizedVolume = clampNumber(input.quantity / Math.max(1, baselineSupply), 0, 0.25);
+    const direction = input.side === TradeSide.BUY ? 1 : -1;
+    const scarcity = clampNumber(
+      (baselineSupply - input.availableSupplyAfterTrade) / Math.max(1, baselineSupply),
+      0,
+      0.95,
+    );
+
+    const existing = this.tradeSignals.get(input.ticker) ?? {
+      orderImbalance: 0,
+      tradeIntensity: 0,
+    };
+
+    const orderImbalance = clampNumber(
+      existing.orderImbalance * 0.55 + direction * normalizedVolume * (2.2 + scarcity * 0.8),
+      -1,
+      1,
+    );
+    const tradeIntensity = clampNumber(
+      existing.tradeIntensity * 0.5 + normalizedVolume * 3.2,
+      0,
+      1,
+    );
+
+    this.tradeSignals.set(input.ticker, {
+      orderImbalance,
+      tradeIntensity,
+    });
+  }
+
+  decayTradeSignal(ticker: string): void {
+    const signal = this.tradeSignals.get(ticker);
+    if (!signal) return;
+
+    const orderImbalance = clampNumber(signal.orderImbalance * 0.6, -1, 1);
+    const tradeIntensity = clampNumber(signal.tradeIntensity * 0.65, 0, 1);
+
+    if (Math.abs(orderImbalance) < 0.01 && tradeIntensity < 0.01) {
+      this.tradeSignals.delete(ticker);
+      return;
+    }
+
+    this.tradeSignals.set(ticker, {
+      orderImbalance,
+      tradeIntensity,
+    });
+  }
+
+  resetTradeSignals(tickers?: string[]): void {
+    if (!tickers) {
+      this.tradeSignals.clear();
+      return;
+    }
+
+    for (const ticker of tickers) {
+      this.tradeSignals.delete(ticker);
+    }
   }
 
   broadcastState(): void {

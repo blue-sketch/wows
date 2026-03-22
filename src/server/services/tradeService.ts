@@ -9,6 +9,7 @@ import type { TradeResponseDto } from '../../shared/contracts.js';
 import { HttpError } from '../lib/errors.js';
 import { decimalOf, moneyNumber, roundMoney } from '../lib/money.js';
 import type { MarketRuntime } from './marketRuntime.js';
+import { calculateTradeAdjustedPrice } from './pricingEngine.js';
 
 const MAX_TRANSACTION_RETRIES = 3;
 
@@ -18,6 +19,16 @@ interface TradeRequestInput {
   quantity: number;
   requestId: string;
   side: TradeSide;
+}
+
+interface TradeExecutionResult {
+  response: TradeResponseDto;
+  marketEffect?: {
+    ticker: string;
+    side: TradeSide;
+    quantity: number;
+    availableSupplyAfterTrade: number;
+  };
 }
 
 const isSerializableConflict = (error: unknown): boolean =>
@@ -63,13 +74,15 @@ export class TradeService {
     for (let attempt = 1; attempt <= MAX_TRANSACTION_RETRIES; attempt += 1) {
       try {
         const result = await this.prisma.$transaction(
-          async (tx) => {
+          async (tx): Promise<TradeExecutionResult> => {
             const existingTrade = await tx.trade.findUnique({
               where: { requestId: input.requestId },
             });
 
             if (existingTrade) {
-              return this.buildResponseFromExisting(tx, existingTrade, input.userId);
+              return {
+                response: await this.buildResponseFromExisting(tx, existingTrade, input.userId),
+              };
             }
 
             await tx.$queryRaw`
@@ -94,12 +107,14 @@ export class TradeService {
             const [stock] = await tx.$queryRaw<
               Array<{
                 id: number;
+                ticker: string;
                 current_price: Prisma.Decimal;
+                base_price: Prisma.Decimal;
                 available_supply: number;
                 is_tradeable: boolean;
               }>
             >`
-              SELECT id, current_price, available_supply, is_tradeable
+              SELECT id, ticker, current_price, base_price, available_supply, is_tradeable
               FROM "Stock"
               WHERE id = ${input.stockId}
               FOR UPDATE
@@ -130,6 +145,16 @@ export class TradeService {
                 throw new HttpError(409, 'Insufficient cash balance.');
               }
 
+              const availableSupplyAfterTrade = stock.available_supply - input.quantity;
+              const impactedPrice = calculateTradeAdjustedPrice({
+                currentPrice: stock.current_price.toString(),
+                basePrice: stock.base_price.toString(),
+                baselineSupply: this.runtime.getBaselineSupply(stock.ticker, stock.available_supply),
+                availableSupplyAfterTrade,
+                quantity: input.quantity,
+                side: 'BUY',
+              });
+
               await tx.user.update({
                 where: { id: input.userId },
                 data: {
@@ -139,7 +164,10 @@ export class TradeService {
 
               await tx.stock.update({
                 where: { id: input.stockId },
-                data: { availableSupply: { decrement: input.quantity } },
+                data: {
+                  availableSupply: { decrement: input.quantity },
+                  currentPrice: impactedPrice.toFixed(2),
+                },
               });
 
               const existingHolding = await tx.holding.findUnique({
@@ -186,7 +214,15 @@ export class TradeService {
                 },
               });
 
-              return this.buildResponseFromTrade(tx, trade, input.userId);
+              return {
+                response: await this.buildResponseFromTrade(tx, trade, input.userId),
+                marketEffect: {
+                  ticker: stock.ticker,
+                  side: TradeSide.BUY,
+                  quantity: input.quantity,
+                  availableSupplyAfterTrade,
+                },
+              };
             }
 
             const holdings = await tx.$queryRaw<
@@ -208,6 +244,15 @@ export class TradeService {
 
             const sellPrice = decimalOf(stock.current_price.toString());
             const proceeds = roundMoney(sellPrice.mul(input.quantity));
+            const availableSupplyAfterTrade = stock.available_supply + input.quantity;
+            const impactedPrice = calculateTradeAdjustedPrice({
+              currentPrice: stock.current_price.toString(),
+              basePrice: stock.base_price.toString(),
+              baselineSupply: this.runtime.getBaselineSupply(stock.ticker, stock.available_supply),
+              availableSupplyAfterTrade,
+              quantity: input.quantity,
+              side: 'SELL',
+            });
 
             await tx.user.update({
               where: { id: input.userId },
@@ -218,7 +263,10 @@ export class TradeService {
 
             await tx.stock.update({
               where: { id: input.stockId },
-              data: { availableSupply: { increment: input.quantity } },
+              data: {
+                availableSupply: { increment: input.quantity },
+                currentPrice: impactedPrice.toFixed(2),
+              },
             });
 
             const remainingQuantity = holding.quantity - input.quantity;
@@ -244,7 +292,15 @@ export class TradeService {
               },
             });
 
-            return this.buildResponseFromTrade(tx, trade, input.userId);
+            return {
+              response: await this.buildResponseFromTrade(tx, trade, input.userId),
+              marketEffect: {
+                ticker: stock.ticker,
+                side: TradeSide.SELL,
+                quantity: input.quantity,
+                availableSupplyAfterTrade,
+              },
+            };
           },
           {
             isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -253,8 +309,13 @@ export class TradeService {
           },
         );
 
+        if (result.marketEffect) {
+          this.runtime.recordTradeActivity(result.marketEffect);
+          await this.runtime.queueStateRefresh({ forceLeaderboardRefresh: true });
+        }
+
         await this.runtime.emitPortfolioUpdate(input.userId);
-        return result;
+        return result.response;
       } catch (error) {
         if (isUniqueRequestViolation(error)) {
           const trade = await this.prisma.trade.findUnique({
@@ -263,6 +324,7 @@ export class TradeService {
           if (!trade) {
             throw error;
           }
+          await this.runtime.queueStateRefresh({ forceLeaderboardRefresh: true });
           await this.runtime.emitPortfolioUpdate(input.userId);
           return this.buildResponseFromPersistedTrade(trade, input.userId);
         }

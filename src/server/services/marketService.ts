@@ -22,6 +22,7 @@ export class MarketService {
   async tick(): Promise<void> {
     await this.runtime.queueMarketMutation(async () => {
       const tickedTickers: string[] = [];
+      const priceUpdates: { id: number; ticker: string; nextPrice: string }[] = [];
 
       await this.prisma.$transaction(async (tx) => {
         const marketState = await tx.marketState.findUniqueOrThrow({ where: { id: 1 } });
@@ -34,6 +35,7 @@ export class MarketService {
           orderBy: { ticker: 'asc' },
         });
 
+        // Compute all next prices in memory first
         for (const stock of stocks) {
           const baselineSupply = this.runtime.getBaselineSupply(stock.ticker, stock.availableSupply);
           const tradeSignal = this.runtime.getTradeSignal(stock.ticker);
@@ -48,13 +50,26 @@ export class MarketService {
             randomShock,
           });
 
-          await tx.stock.update({
-            where: { id: stock.id },
-            data: { currentPrice: nextPrice.toFixed(2) },
+          priceUpdates.push({
+            id: stock.id,
+            ticker: stock.ticker,
+            nextPrice: nextPrice.toFixed(2),
           });
-
           tickedTickers.push(stock.ticker);
         }
+
+        if (priceUpdates.length === 0) return;
+
+        // Batch all stock price updates into a SINGLE SQL query
+        // instead of 15 individual UPDATEs
+        const caseClause = priceUpdates
+          .map((u) => `WHEN ${u.id} THEN ${u.nextPrice}`)
+          .join(' ');
+        const idList = priceUpdates.map((u) => u.id).join(',');
+
+        await tx.$executeRawUnsafe(
+          `UPDATE "Stock" SET "current_price" = CASE "id" ${caseClause} END, "updated_at" = NOW() WHERE "id" IN (${idList})`,
+        );
 
         await tx.marketState.update({
           where: { id: 1 },
@@ -71,7 +86,12 @@ export class MarketService {
       for (const ticker of tickedTickers) {
         this.runtime.decayTradeSignal(ticker);
       }
-    }, { forceLeaderboardRefresh: true });
+
+      // Apply computed prices directly to cache (skip DB re-read)
+      if (priceUpdates.length > 0) {
+        this.runtime.applyTickPrices(priceUpdates);
+      }
+    }, { forceLeaderboardRefresh: false, skipRefreshState: true });
   }
 
   async startRound(roundId: number, actorId: number): Promise<void> {

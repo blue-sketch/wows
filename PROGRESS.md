@@ -149,3 +149,38 @@ At the end of every development session, append/update:
 - Next immediate tasks for the following session.
 
 Do not start a new major task in a future chat without first reading this file.
+
+## Session Update - 2026-03-23 15:42 IST
+
+- Summary:
+  - Recovered the app from a dead Supabase `DATABASE_URL` whose host no longer resolved.
+  - Installed local PostgreSQL 17 tooling, initialized a local cluster at `/tmp/wows-pg17`, created `wows_dev`, migrated, and reseeded the app database.
+  - Updated local `.env` to use `postgresql://postgres@127.0.0.1:5433/wows_dev?schema=public`.
+  - Added `.env.example` and README guidance so future local setup starts from a reachable Postgres target.
+
+- Files changed:
+  - `README.md`
+  - `.env.example`
+
+- Commands/tests run:
+  - `node -e "dns.lookup(...db.xqnoujhcpjskmdzbjddo.supabase.co...)"` -> failed with `ENOTFOUND` confirming stale host.
+  - `brew install postgresql@17` -> installed.
+  - `brew link --overwrite postgresql@17` -> succeeded.
+  - `initdb -D /tmp/wows-pg17 -A trust -U postgres` -> succeeded.
+  - `pg_ctl -D /tmp/wows-pg17 -l /tmp/wows-pg17.log -o "-p 5433 -h 127.0.0.1" start` -> succeeded.
+  - `createdb -h 127.0.0.1 -p 5433 -U postgres wows_dev` -> succeeded.
+  - `npm run prisma:deploy` -> succeeded against local DB.
+  - `npm run prisma:seed` -> succeeded against local DB.
+  - `npm test` -> passed (3 files, 9 tests).
+  - `npm run build` -> passed.
+  - `curl http://127.0.0.1:3000/health` -> returned `ok: true`.
+  - `curl http://127.0.0.1:3000/api/display/bootstrap` -> returned seeded market snapshot.
+  - `curl POST http://127.0.0.1:3000/auth/login` with `admin / venturers-admin` -> returned valid admin bootstrap payload.
+
+- Risks / mitigation:
+  - The local Postgres cluster currently lives in `/tmp/wows-pg17`, so it is suitable for immediate development and rehearsal recovery but not for durable long-term storage across OS cleanup/reboot.
+  - Mitigation: if the team wants persistence, move this to a managed/persistent Postgres data directory or restore a valid Supabase/hosted Postgres URL and rerun migrations/seed as needed.
+
+- Next immediate tasks:
+  - Run one browser-level admin/participant/display rehearsal against the repaired local stack.
+  - Decide whether local dev should stay on PostgreSQL in `/tmp` or move to a persistent local/service-backed data directory.

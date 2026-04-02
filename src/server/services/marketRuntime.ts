@@ -33,7 +33,7 @@ interface RuntimeCache {
 }
 
 const NEWS_LIMIT = 20;
-const LEADERBOARD_CACHE_MS = 30_000;
+const LEADERBOARD_CACHE_MS = 5_000;
 
 interface TradeActivityInput {
   ticker: string;
@@ -201,11 +201,13 @@ export class MarketRuntime {
 
   async queueMarketMutation<T>(
     task: () => Promise<T>,
-    options?: { forceLeaderboardRefresh?: boolean },
+    options?: { forceLeaderboardRefresh?: boolean; skipRefreshState?: boolean },
   ): Promise<T> {
     const runTask = async (): Promise<T> => {
       const result = await task();
-      await this.refreshState();
+      if (!options?.skipRefreshState) {
+        await this.refreshState();
+      }
       await this.refreshLeaderboard(options?.forceLeaderboardRefresh ?? false);
       this.broadcastState();
       return result;
@@ -250,6 +252,29 @@ export class MarketRuntime {
 
   getBaselineSupply(ticker: string, fallbackSupply = 1): number {
     return this.baselineSupplyByTicker.get(ticker) ?? Math.max(1, fallbackSupply);
+  }
+
+  /**
+   * Apply tick-computed prices directly to the in-memory cache.
+   * This avoids a full DB re-read after each tick (saves 3 queries per tick).
+   */
+  applyTickPrices(updates: { id: number; ticker: string; nextPrice: string }[]): void {
+    for (const { id, ticker, nextPrice } of updates) {
+      const price = moneyNumber(nextPrice);
+      this.cache.prices[ticker] = price;
+
+      const stockIdx = this.cache.stocks.findIndex((s) => s.id === id);
+      if (stockIdx !== -1) {
+        this.cache.stocks[stockIdx] = {
+          ...this.cache.stocks[stockIdx],
+          currentPrice: price,
+        };
+      }
+    }
+
+    // Bump marketState in cache
+    this.cache.marketState.lastTickAt = new Date().toISOString();
+    this.cache.marketState.eventVersion += 1;
   }
 
   getTradeSignal(ticker: string): TradeSignal {

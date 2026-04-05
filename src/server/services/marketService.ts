@@ -325,6 +325,100 @@ export class MarketService {
       { forceLeaderboardRefresh: true },
     );
   }
+  async applySectorShock(
+    actorId: number,
+    payload: { sector: string; magnitudePct: number; reason?: string }
+  ): Promise<void> {
+    const { sector, magnitudePct } = payload;
+    
+    // 1. Find all stocks in that sector
+    const stocks = await this.prisma.stock.findMany({ 
+      where: { sector } 
+    });
+
+    if (stocks.length === 0) {
+      throw new HttpError(404, 'Sector not found or has no stocks.');
+    }
+
+    // 2. Prepare the database updates
+    const updates = stocks.map((stock) => {
+      const currentPrice = Number(stock.currentPrice);
+      const basePrice = Number(stock.basePrice);
+      const multiplier = 1 + magnitudePct / 100;
+      
+      let nextPrice = currentPrice * multiplier;
+      
+      // Simple Bounds constraints (max 6x base price, min 0.2x base price)
+      const ceiling = basePrice * 6;
+      const floor = basePrice * 0.2;
+      
+      if (nextPrice > ceiling) nextPrice = ceiling;
+      if (nextPrice < floor) nextPrice = floor;
+
+      return this.prisma.stock.update({
+        where: { id: stock.id },
+        data: { currentPrice: nextPrice },
+      });
+    });
+
+    // 3. Execute all updates at the same time
+    await this.prisma.$transaction(updates);
+
+    // 4. Record the admin event and refresh the market
+    await this.runtime.recordAdminEvent('SHOCK', actorId, payload);
+    await this.runtime.queueStateRefresh({ forceLeaderboardRefresh: true });
+  }
+
+  async adjustUserCash(
+    actorId: number,
+    input: { targetUserId: number; amount: number; reason?: string }
+  ): Promise<void> {
+    if (isNaN(input.amount) || input.amount === 0) {
+      throw new HttpError(400, 'Invalid adjustment amount.');
+    }
+
+    await this.runtime.queueMarketMutation(
+      async () => {
+        await this.prisma.$transaction(async (tx) => {
+          const targetUser = await tx.user.findUnique({
+            where: { id: input.targetUserId }
+          });
+
+          if (!targetUser) {
+            throw new HttpError(404, 'Participant not found.');
+          }
+
+          // Use Prisma's increment (which safely handles negative numbers for subtraction)
+          await tx.user.update({
+            where: { id: input.targetUserId },
+            data: {
+              cashBalance: {
+                increment: input.amount
+              }
+            }
+          });
+
+          // Log the manual correction in the admin timeline
+          await tx.adminEvent.create({
+            data: {
+              type: AdminEventType.MANUAL_CORRECTION, 
+              actorId,
+              payload: toInputJson({
+                targetUserId: input.targetUserId,
+                amount: input.amount,
+                reason: input.reason
+              }),
+            },
+          });
+        });
+
+        // Push the new portfolio balance live to the specific participant
+        await this.runtime.emitPortfolioUpdate(input.targetUserId);
+      },
+      // Force leaderboard to refresh so the admin sees the updated Net Liq/Cash immediately
+      { forceLeaderboardRefresh: true } 
+    );
+  }
 
   async broadcastMessage(actorId: number, message: string): Promise<void> {
     if (!message.trim()) {

@@ -16,7 +16,16 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    
+    // NEW: Explicitly tell TypeScript where your custom types live
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/server/types"
+    ]
   },
-  "include": ["client/src", "src/shared", "vite.config.ts"]
+  
+  // CHANGED: Added "src/server" to the list so TS actually reads your backend code!
+  "include": ["client/src", "src/shared", "src/server", "vite.config.ts"]
 }

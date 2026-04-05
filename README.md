@@ -13,10 +13,11 @@ Same-origin stock market simulation platform for the Venturers EDC event. The ba
 
 1. Install dependencies: `npm install`
 2. Create `.env` from `.env.example`
-3. Generate Prisma client: `npm run prisma:generate`
-4. Run migrations locally: `npm run prisma:migrate`
-5. Seed demo data: `npm run prisma:seed`
-6. Start development: `npm run dev`
+3. Point `DATABASE_URL` at a reachable PostgreSQL instance. The example file uses a local database on `127.0.0.1:5433`.
+4. Generate Prisma client: `npm run prisma:generate`
+5. Run migrations locally: `npm run prisma:migrate`
+6. Seed demo data: `npm run prisma:seed`
+7. Start development: `npm run dev`
 
 ## Production Build
 

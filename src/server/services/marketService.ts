@@ -4,25 +4,14 @@ import { Decimal } from 'decimal.js';
 import { parseUserCsv } from '../lib/csv.js';
 import { HttpError } from '../lib/errors.js';
 import { toInputJson } from '../lib/json.js';
-import { clamp, decimalOf, moneyNumber, percentage, roundMoney } from '../lib/money.js';
+import { decimalOf, moneyNumber } from '../lib/money.js';
 import type { MarketRuntime } from './marketRuntime.js';
+import { calculateNextTickPrice, clampStockPrice } from './pricingEngine.js';
 
 interface NewsImpactInput {
   ticker: string;
   magnitudePct: number;
 }
-
-const PRICE_FLOOR_MULTIPLIER = new Decimal(0.2);
-const PRICE_CEILING_MULTIPLIER = new Decimal(6);
-
-const clampStockPrice = (
-  basePrice: Decimal.Value,
-  nextPrice: Decimal.Value,
-): Decimal => {
-  const floor = decimalOf(basePrice).mul(PRICE_FLOOR_MULTIPLIER);
-  const ceiling = decimalOf(basePrice).mul(PRICE_CEILING_MULTIPLIER);
-  return roundMoney(clamp(nextPrice, floor, ceiling));
-};
 
 export class MarketService {
   constructor(
@@ -32,6 +21,9 @@ export class MarketService {
 
   async tick(): Promise<void> {
     await this.runtime.queueMarketMutation(async () => {
+      const tickedTickers: string[] = [];
+      const priceUpdates: { id: number; ticker: string; nextPrice: string }[] = [];
+
       await this.prisma.$transaction(async (tx) => {
         const marketState = await tx.marketState.findUniqueOrThrow({ where: { id: 1 } });
         if (marketState.roundStatus !== RoundStatus.ACTIVE || marketState.tradingHalted) {
@@ -43,21 +35,41 @@ export class MarketService {
           orderBy: { ticker: 'asc' },
         });
 
+        // Compute all next prices in memory first
         for (const stock of stocks) {
-          const currentPrice = decimalOf(stock.currentPrice.toString());
-          const basePrice = decimalOf(stock.basePrice.toString());
-          const volatilityBand = percentage(stock.volatilityPct.toString()).toNumber();
-          const noise = (Math.random() * 2 - 1) * volatilityBand;
-          const drift = currentPrice.sub(basePrice).div(basePrice).toNumber();
-          const pull = Math.abs(drift) > 0.6 ? -drift * 0.05 : 0;
-          const raw = currentPrice.mul(1 + noise + pull);
-          const nextPrice = clampStockPrice(basePrice, raw);
-
-          await tx.stock.update({
-            where: { id: stock.id },
-            data: { currentPrice: nextPrice.toFixed(2) },
+          const baselineSupply = this.runtime.getBaselineSupply(stock.ticker, stock.availableSupply);
+          const tradeSignal = this.runtime.getTradeSignal(stock.ticker);
+          const randomShock = Math.random() + Math.random() - 1;
+          const nextPrice = calculateNextTickPrice({
+            currentPrice: stock.currentPrice.toString(),
+            basePrice: stock.basePrice.toString(),
+            volatilityPct: stock.volatilityPct.toString(),
+            availableSupply: stock.availableSupply,
+            baselineSupply,
+            tradeSignal,
+            randomShock,
           });
+
+          priceUpdates.push({
+            id: stock.id,
+            ticker: stock.ticker,
+            nextPrice: nextPrice.toFixed(2),
+          });
+          tickedTickers.push(stock.ticker);
         }
+
+        if (priceUpdates.length === 0) return;
+
+        // Batch all stock price updates into a SINGLE SQL query
+        // instead of 15 individual UPDATEs
+        const caseClause = priceUpdates
+          .map((u) => `WHEN ${u.id} THEN ${u.nextPrice}`)
+          .join(' ');
+        const idList = priceUpdates.map((u) => u.id).join(',');
+
+        await tx.$executeRawUnsafe(
+          `UPDATE "Stock" SET "current_price" = CASE "id" ${caseClause} END, "updated_at" = NOW() WHERE "id" IN (${idList})`,
+        );
 
         await tx.marketState.update({
           where: { id: 1 },
@@ -70,7 +82,16 @@ export class MarketService {
         maxWait: 10_000,
         timeout: 20_000,
       });
-    });
+
+      for (const ticker of tickedTickers) {
+        this.runtime.decayTradeSignal(ticker);
+      }
+
+      // Apply computed prices directly to cache (skip DB re-read)
+      if (priceUpdates.length > 0) {
+        this.runtime.applyTickPrices(priceUpdates);
+      }
+    }, { forceLeaderboardRefresh: false, skipRefreshState: true });
   }
 
   async startRound(roundId: number, actorId: number): Promise<void> {
@@ -128,6 +149,8 @@ export class MarketService {
             },
           });
         });
+
+        this.runtime.resetTradeSignals();
       },
       { forceLeaderboardRefresh: true },
     );
@@ -181,6 +204,8 @@ export class MarketService {
             },
           });
         });
+
+        this.runtime.resetTradeSignals();
       },
       { forceLeaderboardRefresh: true },
     );

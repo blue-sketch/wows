@@ -9,3 +9,5 @@ coverage
 *.tsbuildinfo
 .idea/
 .vscode/
+.agent
+.agents

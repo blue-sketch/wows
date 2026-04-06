@@ -51,14 +51,15 @@ const bootstrap = async (): Promise<void> => {
       return;
     }
 
-    socket.join('market');
     socket.join(`user:${sessionUser.userId}`);
     if (sessionUser.role === UserRole.ADMIN) {
       socket.join('admin');
       socket.emit('admin_state_sync', runtime.getSnapshot(true));
-    } else {
-      socket.emit('state_sync', runtime.getSnapshot(false));
+      return;
     }
+
+    socket.join('market');
+    socket.emit('state_sync', runtime.getSnapshot(false));
   });
 
   await runtime.initialize();

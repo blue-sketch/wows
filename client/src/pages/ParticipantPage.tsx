@@ -30,7 +30,6 @@ const formatSignedCurrency = (value: number) => `${value >= 0 ? '+' : '-'}${form
 
 const formatSignedPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
 
-
 const describeMomentum = (value: number) => {
   if (value >= 4) return 'Momentum bid';
   if (value >= 0) return 'Constructive';
@@ -143,12 +142,22 @@ export const ParticipantPage = ({
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [optimisticPortfolio, setOptimisticPortfolio] = useState<PortfolioDto | null>(portfolio);
   const [tradeFlash, setTradeFlash] = useState<'ok' | 'err' | null>(null);
+  
+  // NEW: Sector Filter State
+  const [selectedSector, setSelectedSector] = useState<string>('ALL');
 
   useEffect(() => { if (!selectedTicker && snapshot.stocks[0]) setSelectedTicker(snapshot.stocks[0].ticker); }, [selectedTicker, snapshot.stocks]);
   useEffect(() => { setOptimisticPortfolio(portfolio); }, [portfolio]);
   useEffect(() => { if (tradeFlash) { const t = setTimeout(() => setTradeFlash(null), 1800); return () => clearTimeout(t); } }, [tradeFlash]);
 
   /* ── Derived state ── */
+  
+  // NEW: Extract unique sectors and filter stocks
+  const availableSectors = Array.from(new Set(snapshot.stocks.map((s) => s.sector))).sort();
+  const filteredStocks = selectedSector === 'ALL' 
+    ? snapshot.stocks 
+    : snapshot.stocks.filter((s) => s.sector === selectedSector);
+
   const selectedStock = snapshot.stocks.find((s) => s.ticker === selectedTicker) ?? snapshot.stocks[0];
   const selectedHistory = selectedStock ? history[selectedStock.ticker] ?? [selectedStock.currentPrice] : [];
   const previousTickPrice = selectedHistory.length > 1 ? selectedHistory[selectedHistory.length - 2] : selectedStock?.basePrice ?? selectedStock?.currentPrice ?? 0;
@@ -257,10 +266,32 @@ export const ParticipantPage = ({
               <span className="pp-eyebrow">Market Tape</span>
               <h2 className="pp-panel-title">Watchlist</h2>
             </div>
-            <span className="pp-badge">{snapshot.stocks.length}</span>
+            <span className="pp-badge">{filteredStocks.length}</span>
           </header>
+          
+          {/* NEW: Sector Filter UI */}
+          <div style={{ padding: '0 1rem 0.75rem 1rem', display: 'flex', gap: '0.5rem', overflowX: 'auto', borderBottom: '1px solid rgba(255,255,255,0.05)', scrollbarWidth: 'none' }}>
+            <button 
+              className={`pp-preset ${selectedSector === 'ALL' ? 'pp-preset--active' : ''}`} 
+              onClick={() => setSelectedSector('ALL')}
+              style={{ whiteSpace: 'nowrap', padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+            >
+              All
+            </button>
+            {availableSectors.map(sector => (
+              <button 
+                key={sector} 
+                className={`pp-preset ${selectedSector === sector ? 'pp-preset--active' : ''}`} 
+                onClick={() => setSelectedSector(sector)}
+                style={{ whiteSpace: 'nowrap', padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+              >
+                {sector}
+              </button>
+            ))}
+          </div>
+
           <div className="pp-watchlist__list">
-            {snapshot.stocks.map((stock) => {
+            {filteredStocks.map((stock) => {
               const baseDeltaPct = ((stock.currentPrice - stock.basePrice) / (stock.basePrice || 1)) * 100;
               const isSelected = selectedStock?.ticker === stock.ticker;
               const holding = displayPortfolio?.holdings.find(h => h.stockId === stock.id);

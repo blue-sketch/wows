@@ -45,7 +45,7 @@ model User {
   passwordHash String       @map("password_hash") @db.VarChar(255)
   displayName  String       @map("display_name") @db.VarChar(100)
   role         UserRole     @default(PARTICIPANT)
-  cashBalance  Decimal      @default(500000) @map("cash_balance") @db.Decimal(14, 2)
+  cashBalance  Decimal      @default(1000000) @map("cash_balance") @db.Decimal(14, 2)
   isActive     Boolean      @default(true) @map("is_active")
   holdings     Holding[]
   trades       Trade[]

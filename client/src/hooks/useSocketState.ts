@@ -34,11 +34,11 @@ export const useAuthenticatedSocket = ({
       withCredentials: true,
       transports: ['websocket', 'polling'],
     });
+    const snapshotEvent = isAdmin ? 'admin_state_sync' : 'state_sync';
 
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
-    socket.on('state_sync', (snapshot: MarketSnapshotDto) => snapshotRef.current(snapshot));
-    socket.on('admin_state_sync', (snapshot: MarketSnapshotDto) => snapshotRef.current(snapshot));
+    socket.on(snapshotEvent, (snapshot: MarketSnapshotDto) => snapshotRef.current(snapshot));
     socket.on('portfolio_update', (portfolio: PortfolioDto) => portfolioRef.current(portfolio));
 
     return () => {

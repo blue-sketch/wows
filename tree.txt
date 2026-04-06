@@ -1,0 +1,70 @@
+📦client
+ ┣ 📂src
+ ┃ ┣ 📂components
+ ┃ ┃ ┣ 📜MarketPanel.tsx
+ ┃ ┃ ┗ 📜Sparkline.tsx
+ ┃ ┣ 📂hooks
+ ┃ ┃ ┣ 📜usePriceHistory.ts
+ ┃ ┃ ┗ 📜useSocketState.ts
+ ┃ ┣ 📂pages
+ ┃ ┃ ┣ 📜AdminPage.tsx
+ ┃ ┃ ┣ 📜DisplayPage.tsx
+ ┃ ┃ ┣ 📜LoginPage.tsx
+ ┃ ┃ ┗ 📜ParticipantPage.tsx
+ ┃ ┣ 📂styles
+ ┃ ┃ ┣ 📜admin.css
+ ┃ ┃ ┣ 📜display.css
+ ┃ ┃ ┣ 📜login.css
+ ┃ ┃ ┣ 📜main.css
+ ┃ ┃ ┗ 📜participant.css
+ ┃ ┣ 📜api.ts
+ ┃ ┣ 📜App.tsx
+ ┃ ┣ 📜main.tsx
+ ┃ ┗ 📜vite-env.d.ts
+ ┗ 📜index.html
+
+
+ 📦prisma
+ ┣ 📂migrations
+ ┃ ┣ 📂20260320220000_init
+ ┃ ┃ ┗ 📜migration.sql
+ ┃ ┗ 📜migration_lock.toml
+ ┣ 📜schema.prisma
+ ┗ 📜seed.ts
+
+
+ 📦scripts
+ ┣ 📜reset-password.ts
+ ┗ 📜reverse-trade.ts
+
+ 📦src
+ ┣ 📂server
+ ┃ ┣ 📂lib
+ ┃ ┃ ┣ 📜csv.ts
+ ┃ ┃ ┣ 📜db.ts
+ ┃ ┃ ┣ 📜env.ts
+ ┃ ┃ ┣ 📜errors.ts
+ ┃ ┃ ┣ 📜http.ts
+ ┃ ┃ ┣ 📜json.ts
+ ┃ ┃ ┣ 📜money.ts
+ ┃ ┃ ┗ 📜session.ts
+ ┃ ┣ 📂routes
+ ┃ ┃ ┣ 📜api.ts
+ ┃ ┃ ┗ 📜auth.ts
+ ┃ ┣ 📂services
+ ┃ ┃ ┣ 📜marketRuntime.ts
+ ┃ ┃ ┣ 📜marketService.ts
+ ┃ ┃ ┣ 📜pricingEngine.ts
+ ┃ ┃ ┣ 📜tradeService.ts
+ ┃ ┃ ┗ 📜valuation.ts
+ ┃ ┣ 📂types
+ ┃ ┃ ┗ 📜express-session.d.ts
+ ┃ ┣ 📜app.ts
+ ┃ ┗ 📜index.ts
+ ┗ 📂shared
+ ┃ ┗ 📜contracts.ts
+
+ 📦tests
+ ┣ 📜csv.test.ts
+ ┣ 📜money.test.ts
+ ┗ 📜pricingEngine.test.ts

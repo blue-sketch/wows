@@ -1,10 +1,10 @@
 import bcrypt from 'bcrypt';
-import { AdminEventType, PrismaClient, RoundStatus } from '@prisma/client';
+import { AdminEventType, PrismaClient, RoundStatus, UserRole } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 import { parseUserCsv } from '../lib/csv.js';
 import { HttpError } from '../lib/errors.js';
 import { toInputJson } from '../lib/json.js';
-import { decimalOf, moneyNumber } from '../lib/money.js';
+import { decimalOf, moneyNumber, roundMoney } from '../lib/money.js';
 import type { MarketRuntime } from './marketRuntime.js';
 import { calculateNextTickPrice, clampStockPrice } from './pricingEngine.js';
 
@@ -95,24 +95,38 @@ export class MarketService {
   }
 
   async startRound(roundId: number, actorId: number): Promise<void> {
+    if (!Number.isInteger(roundId) || roundId <= 0) {
+      throw new HttpError(400, 'A valid round is required.');
+    }
+
     await this.runtime.queueMarketMutation(
       async () => {
         await this.prisma.$transaction(async (tx) => {
-          const round = await tx.round.findUnique({ where: { id: roundId } });
+          const [round, marketState] = await Promise.all([
+            tx.round.findUnique({ where: { id: roundId } }),
+            tx.marketState.findUniqueOrThrow({ where: { id: 1 } }),
+          ]);
+
           if (!round) {
             throw new HttpError(404, 'Round not found.');
           }
 
+          if (marketState.roundStatus === RoundStatus.ACTIVE && marketState.currentRoundId === roundId) {
+            throw new HttpError(409, `${round.name} is already active.`);
+          }
+
+          const startedAt = new Date();
+
           await tx.round.updateMany({
             where: { status: RoundStatus.ACTIVE },
-            data: { status: RoundStatus.ENDED, endedAt: new Date() },
+            data: { status: RoundStatus.ENDED, endedAt: startedAt },
           });
 
           await tx.round.update({
             where: { id: roundId },
             data: {
               status: RoundStatus.ACTIVE,
-              startedAt: round.startedAt ?? new Date(),
+              startedAt,
               endedAt: null,
             },
           });
@@ -128,6 +142,7 @@ export class MarketService {
               roundStatus: RoundStatus.ACTIVE,
               tradingHalted: false,
               leaderboardVisible: false,
+              lastTickAt: startedAt,
               eventVersion: { increment: 1 },
             },
           });
@@ -162,7 +177,7 @@ export class MarketService {
         await this.prisma.$transaction(async (tx) => {
           const marketState = await tx.marketState.findUniqueOrThrow({ where: { id: 1 } });
 
-          if (!marketState.currentRoundId) {
+          if (!marketState.currentRoundId || marketState.roundStatus !== RoundStatus.ACTIVE) {
             throw new HttpError(409, 'No active round to end.');
           }
 
@@ -324,6 +339,146 @@ export class MarketService {
       },
       { forceLeaderboardRefresh: true },
     );
+  }
+  async applySectorShock(
+    actorId: number,
+    payload: { sector: string; magnitudePct: number; reason?: string }
+  ): Promise<void> {
+    const { sector, magnitudePct } = payload;
+    await this.runtime.queueMarketMutation(
+      async () => {
+        await this.prisma.$transaction(async (tx) => {
+          const stocks = await tx.stock.findMany({
+            where: { sector },
+            orderBy: { ticker: 'asc' },
+          });
+
+          if (stocks.length === 0) {
+            throw new HttpError(404, 'Sector not found or has no stocks.');
+          }
+
+          const adjustments = stocks.map((stock) => {
+            const currentPrice = decimalOf(stock.currentPrice.toString());
+            const nextPrice = clampStockPrice(
+              stock.basePrice,
+              currentPrice.mul(new Decimal(1).add(new Decimal(magnitudePct).div(100))),
+            );
+
+            return {
+              id: stock.id,
+              ticker: stock.ticker,
+              beforePrice: moneyNumber(currentPrice),
+              afterPrice: moneyNumber(nextPrice),
+              nextPrice: nextPrice.toFixed(2),
+            };
+          });
+
+          await Promise.all(
+            adjustments.map((stock) =>
+              tx.stock.update({
+                where: { id: stock.id },
+                data: { currentPrice: stock.nextPrice },
+              }),
+            ),
+          );
+
+          await tx.marketState.update({
+            where: { id: 1 },
+            data: { eventVersion: { increment: 1 } },
+          });
+
+          await tx.adminEvent.create({
+            data: {
+              type: AdminEventType.SHOCK,
+              actorId,
+              payload: toInputJson({
+                ...payload,
+                impactedTickers: adjustments.map((stock) => stock.ticker),
+                priceChanges: adjustments.map(({ ticker, beforePrice, afterPrice }) => ({
+                  ticker,
+                  beforePrice,
+                  afterPrice,
+                })),
+              }),
+            },
+          });
+        });
+      },
+      { forceLeaderboardRefresh: true },
+    );
+  }
+
+  async adjustUserCash(
+    actorId: number,
+    input: { targetUserId: number; amount: number; reason?: string }
+  ): Promise<void> {
+    if (!Number.isInteger(input.targetUserId) || input.targetUserId <= 0) {
+      throw new HttpError(400, 'A valid participant is required.');
+    }
+
+    if (!Number.isFinite(input.amount)) {
+      throw new HttpError(400, 'Invalid adjustment amount.');
+    }
+
+    const adjustment = roundMoney(input.amount);
+    if (adjustment.isZero()) {
+      throw new HttpError(400, 'Invalid adjustment amount.');
+    }
+
+    await this.runtime.queueMarketMutation(
+      async () => {
+        await this.prisma.$transaction(async (tx) => {
+          const targetUser = await tx.user.findUnique({
+            where: { id: input.targetUserId },
+            select: {
+              id: true,
+              role: true,
+              displayName: true,
+              cashBalance: true,
+            },
+          });
+
+          if (!targetUser) {
+            throw new HttpError(404, 'Participant not found.');
+          }
+
+          if (targetUser.role !== UserRole.PARTICIPANT) {
+            throw new HttpError(400, 'Cash adjustments can only be applied to participant desks.');
+          }
+
+          const beforeCashBalance = decimalOf(targetUser.cashBalance.toString());
+          const afterCashBalance = roundMoney(beforeCashBalance.add(adjustment));
+          if (afterCashBalance.isNegative()) {
+            throw new HttpError(409, 'Adjustment would make the participant balance negative.');
+          }
+
+          await tx.user.update({
+            where: { id: input.targetUserId },
+            data: {
+              cashBalance: afterCashBalance.toFixed(2),
+            },
+          });
+
+          await tx.adminEvent.create({
+            data: {
+              type: AdminEventType.MANUAL_CORRECTION,
+              actorId,
+              payload: toInputJson({
+                targetUserId: input.targetUserId,
+                targetDisplayName: targetUser.displayName,
+                amount: moneyNumber(adjustment),
+                beforeCashBalance: moneyNumber(beforeCashBalance),
+                afterCashBalance: moneyNumber(afterCashBalance),
+                reason: input.reason?.trim() || null,
+              }),
+            },
+          });
+        });
+      },
+      { forceLeaderboardRefresh: true }
+    );
+
+    await this.runtime.emitPortfolioUpdate(input.targetUserId);
   }
 
   async broadcastMessage(actorId: number, message: string): Promise<void> {

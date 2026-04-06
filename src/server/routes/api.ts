@@ -203,6 +203,35 @@ export const createApiRouter = (
       res.status(204).send();
     }),
   );
+  // NEW: Sector Shock Route
+  router.post(
+    '/admin/shock/sector',
+    requireAdmin,
+    asyncHandler(async (req, res) => {
+      await marketService.applySectorShock(req.session.user!.userId, {
+        sector: String(req.body.sector ?? ''),
+        magnitudePct: Number(req.body.magnitudePct),
+        reason: typeof req.body.reason === 'string' ? req.body.reason : undefined,
+      });
+
+      res.status(204).send();
+    }),
+  );
+
+  // NEW: Manual Cash Adjustment Route
+  router.post(
+    '/admin/users/adjust-cash',
+    requireAdmin,
+    asyncHandler(async (req, res) => {
+      await marketService.adjustUserCash(req.session.user!.userId, {
+        targetUserId: Number(req.body.targetUserId),
+        amount: Number(req.body.amount),
+        reason: typeof req.body.reason === 'string' ? req.body.reason : undefined,
+      });
+
+      res.status(204).send();
+    }),
+  );
 
   router.post(
     '/admin/broadcast',

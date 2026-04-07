@@ -142,7 +142,7 @@ export const ParticipantPage = ({
   const [tradeError, setTradeError] = useState<string | null>(null);
   const [optimisticPortfolio, setOptimisticPortfolio] = useState<PortfolioDto | null>(portfolio);
   const [tradeFlash, setTradeFlash] = useState<'ok' | 'err' | null>(null);
-  
+
   // NEW: Sector Filter State
   const [selectedSector, setSelectedSector] = useState<string>('ALL');
 
@@ -151,11 +151,11 @@ export const ParticipantPage = ({
   useEffect(() => { if (tradeFlash) { const t = setTimeout(() => setTradeFlash(null), 1800); return () => clearTimeout(t); } }, [tradeFlash]);
 
   /* ── Derived state ── */
-  
+
   // NEW: Extract unique sectors and filter stocks
   const availableSectors = Array.from(new Set(snapshot.stocks.map((s) => s.sector))).sort();
-  const filteredStocks = selectedSector === 'ALL' 
-    ? snapshot.stocks 
+  const filteredStocks = selectedSector === 'ALL'
+    ? snapshot.stocks
     : snapshot.stocks.filter((s) => s.sector === selectedSector);
 
   const selectedStock = snapshot.stocks.find((s) => s.ticker === selectedTicker) ?? snapshot.stocks[0];
@@ -225,7 +225,7 @@ export const ParticipantPage = ({
       <header className="pp-header">
         <div className="pp-header__brand">
           <div className="pp-header__mark">
-            <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
+            <svg width="24" height="24" viewBox="0 0 22 22" fill="none">
               <path d="M2 20L11 2L20 20" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M5.5 14H16.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
@@ -239,9 +239,18 @@ export const ParticipantPage = ({
         <div className="pp-header__stats">
           <div className="pp-stat"><span>Trader</span><strong>{session.user?.displayName}</strong></div>
           <div className="pp-stat"><span>Round</span><strong>{snapshot.marketState.currentRoundName ?? '—'}</strong></div>
-          <div className="pp-stat"><span>Rank</span><strong>{leaderboardEntry ? `#${leaderboardEntry.rank}` : '—'}</strong></div>
-          <div className="pp-stat"><span>Net Liq</span><strong>{formatCurrencyShort(displayPortfolio?.totalValue ?? 0)}</strong></div>
-          <div className="pp-stat"><span>Cash</span><strong>{formatCurrencyShort(displayPortfolio?.cashBalance ?? 0)}</strong></div>
+          {/*<div className="pp-stat"><span>Rank</span><strong>{leaderboardEntry ? `#${leaderboardEntry.rank}` : '—'}</strong></div>*/}
+          {/* Add pp-stat--highlight here */}
+          <div className="pp-stat pp-stat--highlight">
+            <span>Net Liq</span>
+            <strong>{formatCurrencyShort(displayPortfolio?.totalValue ?? 0)}</strong>
+          </div>
+
+          {/* Add pp-stat--highlight here */}
+          <div className="pp-stat pp-stat--highlight">
+            <span>Cash</span>
+            <strong>{formatCurrencyShort(displayPortfolio?.cashBalance ?? 0)}</strong>
+          </div>
           <div className={`pp-stat pp-stat--${tradingStatus}`}><span>Status</span><strong>{tradingStatus === 'open' ? 'Open' : tradingStatus === 'halted' ? 'Halted' : 'Closed'}</strong></div>
           <div className="pp-stat"><span>Tick</span><strong>{liveTime}</strong></div>
         </div>
@@ -268,20 +277,20 @@ export const ParticipantPage = ({
             </div>
             <span className="pp-badge">{filteredStocks.length}</span>
           </header>
-          
+
           {/* NEW: Sector Filter UI */}
           <div style={{ padding: '0 1rem 0.75rem 1rem', display: 'flex', gap: '0.5rem', overflowX: 'auto', borderBottom: '1px solid rgba(255,255,255,0.05)', scrollbarWidth: 'none' }}>
-            <button 
-              className={`pp-preset ${selectedSector === 'ALL' ? 'pp-preset--active' : ''}`} 
+            <button
+              className={`pp-preset ${selectedSector === 'ALL' ? 'pp-preset--active' : ''}`}
               onClick={() => setSelectedSector('ALL')}
               style={{ whiteSpace: 'nowrap', padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
             >
               All
             </button>
             {availableSectors.map(sector => (
-              <button 
-                key={sector} 
-                className={`pp-preset ${selectedSector === sector ? 'pp-preset--active' : ''}`} 
+              <button
+                key={sector}
+                className={`pp-preset ${selectedSector === sector ? 'pp-preset--active' : ''}`}
                 onClick={() => setSelectedSector(sector)}
                 style={{ whiteSpace: 'nowrap', padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
               >

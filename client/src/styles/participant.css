@@ -48,6 +48,7 @@ body:has(.pp-shell) {
   background: var(--pp-bg) !important;
   overflow: hidden;
 }
+
 body:has(.pp-shell)::before,
 body:has(.pp-shell)::after {
   display: none !important;
@@ -130,9 +131,19 @@ body:has(.pp-shell)::after {
   white-space: nowrap;
 }
 
-.pp-pct { font-family: var(--pp-font-mono); font-size: 0.62rem; font-weight: 500; }
-.pp-pct--up { color: var(--pp-green) !important; }
-.pp-pct--down { color: var(--pp-red) !important; }
+.pp-pct {
+  font-family: var(--pp-font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
+}
+
+.pp-pct--up {
+  color: var(--pp-green) !important;
+}
+
+.pp-pct--down {
+  color: var(--pp-red) !important;
+}
 
 .pp-empty {
   padding: 1.5rem 1rem;
@@ -177,7 +188,7 @@ body:has(.pp-shell)::after {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.45rem 1rem;
+  padding: 1.5rem 1rem;
   border-bottom: 1px solid var(--pp-border);
   background: linear-gradient(180deg, rgba(12, 16, 24, 0.97), rgba(6, 10, 16, 0.97));
   backdrop-filter: blur(16px);
@@ -240,11 +251,43 @@ body:has(.pp-shell)::after {
   min-width: 4.2rem;
 }
 
-.pp-stat span { font-family: var(--pp-font-mono); font-size: 0.48rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pp-text-tertiary); font-weight: 500; }
-.pp-stat strong { font-size: 0.68rem; font-weight: 600; color: var(--pp-text); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pp-stat--open strong { color: var(--pp-green); }
-.pp-stat--halted strong { color: var(--pp-red); }
-.pp-stat--closed strong { color: var(--pp-text-secondary); }
+.pp-stat span {
+  font-family: var(--pp-font-mono);
+  font-size: 0.48rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pp-text-tertiary);
+  font-weight: 500;
+}
+
+.pp-stat strong {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--pp-text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-stat--open strong {
+  color: var(--pp-green);
+}
+
+.pp-stat--halted strong {
+  color: var(--pp-red);
+}
+
+.pp-stat--closed strong {
+  color: var(--pp-text-secondary);
+}
+
+.pp-stat--highlight strong {
+  color: rgb(33, 236, 33);
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+
+.pp-stat--highlight span {
+  color: rgb(210, 160, 33);
+}
 
 .pp-header__right {
   display: flex;
@@ -269,13 +312,84 @@ body:has(.pp-shell)::after {
 }
 
 .pp-conn__dot {
-  width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
   animation: ppPulse 2.4s ease-out infinite;
 }
 
-.pp-conn--warn { border-color: rgba(248,113,113,0.2); background: rgba(248,113,113,0.05); color: var(--pp-red); }
+.pp-conn--warn {
+  border-color: rgba(248, 113, 113, 0.2);
+  background: rgba(248, 113, 113, 0.05);
+  color: var(--pp-red);
+}
 
-@keyframes ppPulse { 0%{box-shadow:0 0 0 0 currentColor} 70%{box-shadow:0 0 0 5px transparent} 100%{box-shadow:0 0 0 0 transparent} }
+@keyframes ppPulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor
+  }
+
+  70% {
+    box-shadow: 0 0 0 5px transparent
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent
+  }
+}
+
+/* ── Desktop Scaling (Laptops and up) ── */
+@media (min-width: 1024px) {
+  .pp-header {
+    padding: 1.25rem 2rem;
+    /* More horizontal breathing room */
+    gap: 1.25rem;
+  }
+
+  /* Make the logo box bigger */
+  .pp-header__mark {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  /* Bump up text sizes in the brand section */
+  .pp-header__label {
+    font-size: 0.65rem;
+  }
+
+  .pp-header__title {
+    font-size: 1.15rem;
+  }
+
+  /* Make the stat boxes wider and taller */
+  .pp-stat {
+    padding: 0.35rem 0.75rem;
+    min-width: 5.5rem;
+    gap: 0.1rem;
+  }
+
+  /* Bump up stat text */
+  .pp-stat span {
+    font-size: 0.55rem;
+  }
+
+  .pp-stat strong {
+    font-size: 0.85rem;
+  }
+
+  /* Scale the connection badge */
+  .pp-conn {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.6rem;
+    gap: 0.4rem;
+  }
+
+  .pp-conn__dot {
+    width: 6px;
+    height: 6px;
+  }
+}
 
 /* ═══════════════════════════════════════════════
    WORKSPACE (fills remaining viewport)
@@ -302,7 +416,7 @@ body:has(.pp-shell)::after {
   flex-direction: column;
   border-radius: var(--pp-radius-lg);
   border: 1px solid var(--pp-border);
-  background: linear-gradient(175deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005)), var(--pp-bg-elevated);
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.005)), var(--pp-bg-elevated);
   overflow: hidden;
   min-height: 0;
 }
@@ -321,7 +435,7 @@ body:has(.pp-shell)::after {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(201,160,80,0.12) transparent;
+  scrollbar-color: rgba(201, 160, 80, 0.12) transparent;
 }
 
 .pp-wl-row {
@@ -423,7 +537,7 @@ body:has(.pp-shell)::after {
   flex-direction: column;
   border-radius: var(--pp-radius-lg);
   border: 1px solid var(--pp-border);
-  background: linear-gradient(175deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005)), var(--pp-bg-elevated);
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.005)), var(--pp-bg-elevated);
   overflow: hidden;
   flex: 1.1;
   min-height: 0;
@@ -472,8 +586,17 @@ body:has(.pp-shell)::after {
   text-transform: uppercase;
 }
 
-.pp-status-chip--ok { background: var(--pp-green-dim); border: 1px solid rgba(74,222,128,0.15); color: var(--pp-green); }
-.pp-status-chip--no { background: var(--pp-red-dim); border: 1px solid rgba(248,113,113,0.15); color: var(--pp-red); }
+.pp-status-chip--ok {
+  background: var(--pp-green-dim);
+  border: 1px solid rgba(74, 222, 128, 0.15);
+  color: var(--pp-green);
+}
+
+.pp-status-chip--no {
+  background: var(--pp-red-dim);
+  border: 1px solid rgba(248, 113, 113, 0.15);
+  color: var(--pp-red);
+}
 
 .pp-chart-zone__price {
   text-align: right;
@@ -527,7 +650,9 @@ body:has(.pp-shell)::after {
   border-right: 1px solid var(--pp-border);
 }
 
-.pp-insight:last-child { border-right: none; }
+.pp-insight:last-child {
+  border-right: none;
+}
 
 .pp-insight span {
   font-family: var(--pp-font-mono);
@@ -545,8 +670,13 @@ body:has(.pp-shell)::after {
   font-variant-numeric: tabular-nums;
 }
 
-.pp-insight--up strong { color: var(--pp-green); }
-.pp-insight--down strong { color: var(--pp-red); }
+.pp-insight--up strong {
+  color: var(--pp-green);
+}
+
+.pp-insight--down strong {
+  color: var(--pp-red);
+}
 
 /* ── Bottom duo (Positions + News) ─────────────── */
 .pp-bottom-duo {
@@ -563,7 +693,7 @@ body:has(.pp-shell)::after {
   flex-direction: column;
   border-radius: var(--pp-radius-lg);
   border: 1px solid var(--pp-border);
-  background: linear-gradient(175deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005)), var(--pp-bg-elevated);
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.005)), var(--pp-bg-elevated);
   overflow: hidden;
   min-height: 0;
 }
@@ -573,7 +703,7 @@ body:has(.pp-shell)::after {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(201,160,80,0.12) transparent;
+  scrollbar-color: rgba(201, 160, 80, 0.12) transparent;
 }
 
 /* ── Positions table ───────────────────────────── */
@@ -613,9 +743,17 @@ body:has(.pp-shell)::after {
   transition: background 0.12s;
 }
 
-.pp-pos-table__row:hover { background: rgba(255,255,255,0.02); }
-.pp-pos-table__row--active { background: rgba(201,160,80,0.05); }
-.pp-pos-table__row:last-child { border-bottom: none; }
+.pp-pos-table__row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.pp-pos-table__row--active {
+  background: rgba(201, 160, 80, 0.05);
+}
+
+.pp-pos-table__row:last-child {
+  border-bottom: none;
+}
 
 .pp-pos-table__name {
   display: flex;
@@ -651,13 +789,15 @@ body:has(.pp-shell)::after {
   border-bottom: 1px solid var(--pp-border);
 }
 
-.pp-news-item:last-child { border-bottom: none; }
+.pp-news-item:last-child {
+  border-bottom: none;
+}
 
 .pp-news-item__time {
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
-  border: 1px solid rgba(201,160,80,0.2);
-  background: rgba(201,160,80,0.06);
+  border: 1px solid rgba(201, 160, 80, 0.2);
+  background: rgba(201, 160, 80, 0.06);
   font-family: var(--pp-font-mono);
   font-size: 0.5rem;
   font-weight: 500;
@@ -690,14 +830,19 @@ body:has(.pp-shell)::after {
   flex-direction: column;
   border-radius: var(--pp-radius-lg);
   border: 1px solid var(--pp-border);
-  background: linear-gradient(175deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005)), var(--pp-bg-elevated);
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.005)), var(--pp-bg-elevated);
   overflow: hidden;
   min-height: 0;
   transition: border-color 0.3s;
 }
 
-.pp-order--flash-ok { border-color: rgba(74,222,128,0.4); }
-.pp-order--flash-err { border-color: rgba(248,113,113,0.4); }
+.pp-order--flash-ok {
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.pp-order--flash-err {
+  border-color: rgba(248, 113, 113, 0.4);
+}
 
 .pp-order__body {
   flex: 1;
@@ -707,7 +852,7 @@ body:has(.pp-shell)::after {
   flex-direction: column;
   gap: 0.55rem;
   scrollbar-width: thin;
-  scrollbar-color: rgba(201,160,80,0.12) transparent;
+  scrollbar-color: rgba(201, 160, 80, 0.12) transparent;
 }
 
 /* ── Side toggle ───────────────────────────────── */
@@ -727,7 +872,7 @@ body:has(.pp-shell)::after {
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--pp-text-secondary);
   transition: background 0.15s, color 0.15s;
 }
@@ -743,7 +888,7 @@ body:has(.pp-shell)::after {
 }
 
 .pp-side-btn:not(.pp-side-btn--active):hover {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--pp-text);
 }
 
@@ -757,8 +902,15 @@ body:has(.pp-shell)::after {
   border: 1px solid var(--pp-border);
 }
 
-.pp-order-spotlight--buy { border-color: rgba(74,222,128,0.1); background: rgba(74,222,128,0.03); }
-.pp-order-spotlight--sell { border-color: rgba(248,113,113,0.1); background: rgba(248,113,113,0.03); }
+.pp-order-spotlight--buy {
+  border-color: rgba(74, 222, 128, 0.1);
+  background: rgba(74, 222, 128, 0.03);
+}
+
+.pp-order-spotlight--sell {
+  border-color: rgba(248, 113, 113, 0.1);
+  background: rgba(248, 113, 113, 0.03);
+}
 
 .pp-order-spotlight__ticker {
   font-family: var(--pp-font-mono);
@@ -775,7 +927,7 @@ body:has(.pp-shell)::after {
   font-variant-numeric: tabular-nums;
 }
 
-.pp-order-spotlight > span {
+.pp-order-spotlight>span {
   font-family: var(--pp-font-mono);
   font-size: 0.55rem;
   color: var(--pp-text-tertiary);
@@ -792,7 +944,7 @@ body:has(.pp-shell)::after {
   padding: 0.4rem;
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-sm);
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
   font-family: var(--pp-font-mono);
   font-size: 0.68rem;
   font-weight: 500;
@@ -802,7 +954,10 @@ body:has(.pp-shell)::after {
   text-align: center;
 }
 
-.pp-preset:hover { background: rgba(255,255,255,0.06); color: var(--pp-text); }
+.pp-preset:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--pp-text);
+}
 
 .pp-preset--active {
   background: var(--pp-amber-dim);
@@ -828,7 +983,7 @@ body:has(.pp-shell)::after {
   padding: 0.5rem 0.6rem;
   border-radius: var(--pp-radius-sm);
   border: 1px solid var(--pp-border);
-  background: rgba(0,0,0,0.25);
+  background: rgba(0, 0, 0, 0.25);
   color: var(--pp-text);
   font-family: var(--pp-font-mono);
   font-size: 0.82rem;
@@ -839,7 +994,7 @@ body:has(.pp-shell)::after {
 .pp-input:focus {
   outline: none;
   border-color: var(--pp-amber);
-  box-shadow: 0 0 0 2px rgba(201,160,80,0.1);
+  box-shadow: 0 0 0 2px rgba(201, 160, 80, 0.1);
 }
 
 /* ── Estimate grid ─────────────────────────────── */
@@ -853,7 +1008,7 @@ body:has(.pp-shell)::after {
   padding: 0.4rem 0.5rem;
   border-radius: var(--pp-radius-sm);
   border: 1px solid var(--pp-border);
-  background: rgba(255,255,255,0.02);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .pp-estimate span {
@@ -880,16 +1035,16 @@ body:has(.pp-shell)::after {
   padding: 0.45rem 0.55rem;
   border-radius: var(--pp-radius-sm);
   border: 1px solid var(--pp-border);
-  background: rgba(74,222,128,0.03);
-  border-color: rgba(74,222,128,0.1);
+  background: rgba(74, 222, 128, 0.03);
+  border-color: rgba(74, 222, 128, 0.1);
   font-size: 0.68rem;
   color: var(--pp-text-secondary);
   line-height: 1.4;
 }
 
 .pp-guidance--warn {
-  background: rgba(248,113,113,0.04);
-  border-color: rgba(248,113,113,0.12);
+  background: rgba(248, 113, 113, 0.04);
+  border-color: rgba(248, 113, 113, 0.12);
   color: var(--pp-red);
 }
 
@@ -897,8 +1052,8 @@ body:has(.pp-shell)::after {
   margin: 0;
   padding: 0.4rem 0.5rem;
   border-radius: var(--pp-radius-sm);
-  background: rgba(248,113,113,0.08);
-  border: 1px solid rgba(248,113,113,0.2);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
   color: var(--pp-red);
   font-size: 0.72rem;
   font-weight: 500;
@@ -921,16 +1076,25 @@ body:has(.pp-shell)::after {
   white-space: nowrap;
 }
 
-.pp-btn:active:not(:disabled) { transform: scale(0.97); }
+.pp-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
 
-.pp-btn--sm { padding: 0.32rem 0.55rem; font-size: 0.65rem; }
+.pp-btn--sm {
+  padding: 0.32rem 0.55rem;
+  font-size: 0.65rem;
+}
 
 .pp-btn--ghost {
-  background: rgba(255,255,255,0.04);
+  background: rgba(255, 255, 255, 0.04);
   border-color: var(--pp-border);
   color: var(--pp-text-secondary);
 }
-.pp-btn--ghost:hover { background: rgba(255,255,255,0.07); color: var(--pp-text); }
+
+.pp-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--pp-text);
+}
 
 /* CTA button */
 .pp-btn--cta {
@@ -949,23 +1113,23 @@ body:has(.pp-shell)::after {
 .pp-btn--buy {
   background: linear-gradient(135deg, var(--pp-green-strong), #16a34a);
   color: #fff;
-  box-shadow: 0 2px 10px rgba(34,197,94,0.2);
+  box-shadow: 0 2px 10px rgba(34, 197, 94, 0.2);
 }
 
 .pp-btn--buy:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 18px rgba(34,197,94,0.3);
+  box-shadow: 0 4px 18px rgba(34, 197, 94, 0.3);
 }
 
 .pp-btn--sell {
   background: linear-gradient(135deg, var(--pp-red-strong), #dc2626);
   color: #fff;
-  box-shadow: 0 2px 10px rgba(239,68,68,0.2);
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.2);
 }
 
 .pp-btn--sell:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 18px rgba(239,68,68,0.3);
+  box-shadow: 0 4px 18px rgba(239, 68, 68, 0.3);
 }
 
 /* ═══════════════════════════════════════════════
@@ -1026,5 +1190,7 @@ body:has(.pp-shell)::after {
 
 /* ── Reduced motion ────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .pp-conn__dot { animation: none; }
+  .pp-conn__dot {
+    animation: none;
+  }
 }

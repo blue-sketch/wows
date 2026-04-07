@@ -165,7 +165,7 @@ export const ParticipantPage = ({
   const sessionDelta = selectedStock ? selectedStock.currentPrice - selectedStock.basePrice : 0;
   const sessionDeltaPct = selectedStock ? (sessionDelta / (selectedStock.basePrice || 1)) * 100 : 0;
   const displayPortfolio = revaluePortfolio(optimisticPortfolio ?? portfolio, snapshot.prices);
-  const leaderboardEntry = snapshot.leaderboard.find((e) => e.userId === session.user?.userId) ?? null;
+  {/*const leaderboardEntry = snapshot.leaderboard.find((e) => e.userId === session.user?.userId) ?? null;*/ }
   const selectedHolding = displayPortfolio?.holdings.find((h) => h.stockId === selectedStock?.id) ?? null;
   const estimatedValue = selectedStock ? selectedStock.currentPrice * quantity : 0;
   const projectedCashBalance = displayPortfolio ? displayPortfolio.cashBalance + (side === 'buy' ? -estimatedValue : estimatedValue) : 0;

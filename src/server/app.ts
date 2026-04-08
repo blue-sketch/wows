@@ -12,10 +12,17 @@ import type { TradeService } from './services/tradeService.js';
 
 const clientDistPath = path.resolve(process.cwd(), 'dist/client');
 
+export interface StartupState {
+  phase: 'starting' | 'ready' | 'failed';
+  ready: boolean;
+  errorMessage: string | null;
+}
+
 export const createApp = (
   runtime: MarketRuntime,
   marketService: MarketService,
   tradeService: TradeService,
+  startupState: StartupState,
 ) => {
   const app = express();
 
@@ -50,9 +57,20 @@ export const createApp = (
   });
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
-  app.use(sessionMiddleware);
 
   app.get('/health', async (_req, res, next) => {
+    if (!startupState.ready) {
+      res.status(503).json({
+        ok: false,
+        database: startupState.phase === 'failed' ? 'unavailable' : 'connecting',
+        startup: {
+          phase: startupState.phase,
+          error: startupState.errorMessage,
+        },
+      });
+      return;
+    }
+
     try {
       await prisma.$queryRaw`SELECT 1`;
       const state = runtime.getMarketState();
@@ -65,12 +83,35 @@ export const createApp = (
       res.status(tickIsFresh ? 200 : 503).json({
         ok: tickIsFresh,
         database: 'connected',
+        startup: {
+          phase: startupState.phase,
+          error: startupState.errorMessage,
+        },
         marketState: state,
       });
     } catch (error) {
       next(error);
     }
   });
+
+  app.use((_req, res, next) => {
+    if (startupState.ready) {
+      next();
+      return;
+    }
+
+    res.status(503).json({
+      error:
+        startupState.phase === 'failed'
+          ? 'Server startup failed.'
+          : 'Server is still starting. Please try again shortly.',
+      startup: {
+        phase: startupState.phase,
+      },
+    });
+  });
+
+  app.use(sessionMiddleware);
 
   app.use('/auth', createAuthRouter(runtime));
   app.use('/api', createApiRouter(runtime, marketService, tradeService));

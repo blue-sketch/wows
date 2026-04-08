@@ -148,7 +148,7 @@ export class TradeService {
               const availableSupplyAfterTrade = stock.available_supply - input.quantity;
               const impactedPrice = calculateTradeAdjustedPrice({
                 currentPrice: stock.current_price.toString(),
-                basePrice: stock.base_price.toString(),
+                basePrice: this.runtime.getInternalBasePrice(stock.ticker),
                 baselineSupply: this.runtime.getBaselineSupply(stock.ticker, stock.available_supply),
                 availableSupplyAfterTrade,
                 quantity: input.quantity,
@@ -247,7 +247,7 @@ export class TradeService {
             const availableSupplyAfterTrade = stock.available_supply + input.quantity;
             const impactedPrice = calculateTradeAdjustedPrice({
               currentPrice: stock.current_price.toString(),
-              basePrice: stock.base_price.toString(),
+              basePrice: this.runtime.getInternalBasePrice(stock.ticker),
               baselineSupply: this.runtime.getBaselineSupply(stock.ticker, stock.available_supply),
               availableSupplyAfterTrade,
               quantity: input.quantity,

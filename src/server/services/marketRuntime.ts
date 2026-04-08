@@ -64,6 +64,7 @@ export class MarketRuntime {
   };
 
   private mutationQueue: Promise<unknown> = Promise.resolve();
+  private internalBasePrices = new Map<string, number>();
   private baselineSupplyByTicker = new Map<string, number>();
   private tradeSignals = new Map<string, TradeSignal>();
 
@@ -110,6 +111,11 @@ export class MarketRuntime {
     ]);
 
     for (const stock of stocks) {
+      const normalizedTicker = this.normalizeTicker(stock.ticker);
+      if (!this.internalBasePrices.has(normalizedTicker)) {
+        this.internalBasePrices.set(normalizedTicker, stock.basePrice.toNumber());
+      }
+
       const knownSupply = this.baselineSupplyByTicker.get(stock.ticker);
       if (knownSupply === undefined || stock.availableSupply > knownSupply) {
         this.baselineSupplyByTicker.set(stock.ticker, stock.availableSupply);
@@ -250,6 +256,28 @@ export class MarketRuntime {
     await this.refreshLeaderboardIfStale();
   }
 
+  getInternalBasePrice(ticker: string): number {
+    return this.internalBasePrices.get(this.normalizeTicker(ticker)) ?? 1;
+  }
+
+  updateInternalBasePrice(ticker: string, newPrice: number): void {
+    if (!Number.isFinite(newPrice)) {
+      return;
+    }
+
+    this.internalBasePrices.set(this.normalizeTicker(ticker), Math.max(1, moneyNumber(newPrice)));
+  }
+
+  shiftInternalBasePrice(ticker: string, magnitudePct: number): void {
+    if (!Number.isFinite(magnitudePct)) {
+      return;
+    }
+
+    const currentBasePrice = this.getInternalBasePrice(ticker);
+    const nextBasePrice = currentBasePrice * (1 + magnitudePct / 100);
+    this.updateInternalBasePrice(ticker, nextBasePrice);
+  }
+
   getBaselineSupply(ticker: string, fallbackSupply = 1): number {
     return this.baselineSupplyByTicker.get(ticker) ?? Math.max(1, fallbackSupply);
   }
@@ -373,4 +401,8 @@ export class MarketRuntime {
     detail: newsEvent.detail,
     triggeredAt: newsEvent.triggeredAt.toISOString(),
   });
+
+  private normalizeTicker(ticker: string): string {
+    return ticker.trim().toUpperCase();
+  }
 }

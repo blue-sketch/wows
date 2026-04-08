@@ -19,6 +19,29 @@ export class MarketService {
     private readonly runtime: MarketRuntime,
   ) {}
 
+  private getShiftedInternalBasePrice(ticker: string, magnitudePct: number): number {
+    const shiftedBasePrice = roundMoney(
+      decimalOf(this.runtime.getInternalBasePrice(ticker)).mul(
+        new Decimal(1).add(new Decimal(magnitudePct).div(100)),
+      ),
+    ).toNumber();
+
+    return Math.max(1, shiftedBasePrice);
+  }
+
+  private calculateShockAdjustedPrice(
+    ticker: string,
+    currentPrice: Decimal.Value,
+    magnitudePct: number,
+  ): Decimal {
+    const shiftedBasePrice = this.getShiftedInternalBasePrice(ticker, magnitudePct);
+    const shockedPrice = decimalOf(currentPrice).mul(
+      new Decimal(1).add(new Decimal(magnitudePct).div(100)),
+    );
+
+    return clampStockPrice(shiftedBasePrice, shockedPrice);
+  }
+
   async tick(): Promise<void> {
     await this.runtime.queueMarketMutation(async () => {
       const tickedTickers: string[] = [];
@@ -42,7 +65,7 @@ export class MarketService {
           const randomShock = Math.random() + Math.random() - 1;
           const nextPrice = calculateNextTickPrice({
             currentPrice: stock.currentPrice.toString(),
-            basePrice: stock.basePrice.toString(),
+            basePrice: this.runtime.getInternalBasePrice(stock.ticker),
             volatilityPct: stock.volatilityPct.toString(),
             availableSupply: stock.availableSupply,
             baselineSupply,
@@ -252,11 +275,10 @@ export class MarketService {
               throw new HttpError(404, `Unknown ticker ${impact.ticker}.`);
             }
 
-            const currentPrice = decimalOf(stock.currentPrice.toString());
-            const basePrice = decimalOf(stock.basePrice.toString());
-            const nextPrice = clampStockPrice(
-              basePrice,
-              currentPrice.mul(new Decimal(1).add(new Decimal(impact.magnitudePct).div(100))),
+            const nextPrice = this.calculateShockAdjustedPrice(
+              stock.ticker,
+              stock.currentPrice.toString(),
+              impact.magnitudePct,
             );
 
             await tx.stock.update({
@@ -287,6 +309,10 @@ export class MarketService {
             },
           });
         });
+
+        for (const impact of input.impacts) {
+          this.runtime.shiftInternalBasePrice(impact.ticker, impact.magnitudePct);
+        }
       },
       { forceLeaderboardRefresh: true },
     );
@@ -308,10 +334,10 @@ export class MarketService {
           }
 
           const currentPrice = decimalOf(stock.currentPrice.toString());
-          const basePrice = decimalOf(stock.basePrice.toString());
-          const nextPrice = clampStockPrice(
-            basePrice,
-            currentPrice.mul(new Decimal(1).add(new Decimal(input.magnitudePct).div(100))),
+          const nextPrice = this.calculateShockAdjustedPrice(
+            stock.ticker,
+            stock.currentPrice.toString(),
+            input.magnitudePct,
           );
 
           await tx.stock.update({
@@ -336,6 +362,8 @@ export class MarketService {
             },
           });
         });
+
+        this.runtime.shiftInternalBasePrice(input.ticker, input.magnitudePct);
       },
       { forceLeaderboardRefresh: true },
     );
@@ -347,6 +375,8 @@ export class MarketService {
     const { sector, magnitudePct } = payload;
     await this.runtime.queueMarketMutation(
       async () => {
+        const affectedTickers: string[] = [];
+
         await this.prisma.$transaction(async (tx) => {
           const stocks = await tx.stock.findMany({
             where: { sector },
@@ -357,11 +387,14 @@ export class MarketService {
             throw new HttpError(404, 'Sector not found or has no stocks.');
           }
 
+          affectedTickers.push(...stocks.map((stock) => stock.ticker));
+
           const adjustments = stocks.map((stock) => {
             const currentPrice = decimalOf(stock.currentPrice.toString());
-            const nextPrice = clampStockPrice(
-              stock.basePrice,
-              currentPrice.mul(new Decimal(1).add(new Decimal(magnitudePct).div(100))),
+            const nextPrice = this.calculateShockAdjustedPrice(
+              stock.ticker,
+              stock.currentPrice.toString(),
+              magnitudePct,
             );
 
             return {
@@ -403,6 +436,10 @@ export class MarketService {
             },
           });
         });
+
+        for (const ticker of affectedTickers) {
+          this.runtime.shiftInternalBasePrice(ticker, magnitudePct);
+        }
       },
       { forceLeaderboardRefresh: true },
     );
